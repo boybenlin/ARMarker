@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>AR Walk Demo</title>
 
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
@@ -11,7 +12,7 @@
   <style>
     body {
       margin: 0;
-      font: 16px system-ui, sans-serif;
+      font: 15px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     }
 
     #status, #controls {
@@ -21,57 +22,96 @@
 
     #status {
       top: max(12px, env(safe-area-inset-top));
-      left: 12px;
-      right: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: 75vw;
       margin: 0;
-      padding: 10px;
-      border-radius: 10px;
-      background: #17202a;
-      color: white;
+      padding: 9px 16px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.84);
+      color: #202124;
       text-align: center;
       pointer-events: none;
     }
 
     #controls {
-      bottom: max(16px, env(safe-area-inset-bottom));
-      left: 50%;
-      transform: translateX(-50%);
-      display: grid;
-      grid-template-columns: repeat(3, 60px);
-      gap: 6px;
+      top: 50%;
+      right: calc(env(safe-area-inset-right, 0px) + 20px);
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
       touch-action: none;
       user-select: none;
       -webkit-user-select: none;
+      -webkit-touch-callout: none;
     }
 
-    #controls[hidden] { display: none; }
-
-    button {
-      min-height: 50px;
-      border: 1px solid #9ca9b8;
-      border-radius: 10px;
-      background: #17202a;
-      color: white;
-      font: inherit;
+    #controls[hidden] {
+      display: none;
     }
 
-    button:active { background: #305b83; }
-    button:disabled { opacity: 0.45; }
+    #reset, #stick {
+      box-sizing: border-box;
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.46);
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 3px 16px rgba(0, 0, 0, 0.14);
+    }
+
+    #reset {
+      display: grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      padding: 0;
+      color: #202124;
+      font: 27px/1 system-ui, sans-serif;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    #reset:active {
+      background: rgba(255, 255, 255, 0.85);
+    }
+
+    #stick {
+      position: relative;
+      width: clamp(96px, 31vh, 142px);
+      aspect-ratio: 1;
+    }
+
+    #knob {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 42%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.93);
+      box-shadow: 0 2px 9px rgba(0, 0, 0, 0.16);
+      pointer-events: none;
+    }
+
+    #reset:disabled, #stick[aria-disabled="true"] {
+      opacity: 0.45;
+    }
   </style>
 </head>
 <body>
   <p id="status" role="status">Loading…</p>
 
   <div id="controls" role="group" aria-label="Character controls" hidden>
-    <button data-x="0" data-z="-1" aria-label="Move forward"
-            style="grid-column: 2" disabled>↑</button>
-    <button data-x="-1" data-z="0" aria-label="Move left"
-            style="grid-column: 1; grid-row: 2" disabled>←</button>
-    <button id="reset" style="grid-column: 2; grid-row: 2" disabled>Reset</button>
-    <button data-x="1" data-z="0" aria-label="Move right"
-            style="grid-column: 3; grid-row: 2" disabled>→</button>
-    <button data-x="0" data-z="1" aria-label="Move back"
-            style="grid-column: 2; grid-row: 3" disabled>↓</button>
+    <button id="reset" type="button" aria-label="Reset character" disabled>↺</button>
+    <div id="stick" role="group" aria-label="Drag to move the character"
+         aria-disabled="true">
+      <span id="knob" aria-hidden="true"></span>
+    </div>
   </div>
 
   <template id="phone-scene">
@@ -79,8 +119,8 @@
              xr-mode-ui="enabled: false"
              device-orientation-permission-ui="enabled: false">
       <a-assets>
-        <a-asset-item id="phone-platform" src="./platform.glb"></a-asset-item>
-        <a-asset-item id="phone-character" src="./character.glb"></a-asset-item>
+        <a-asset-item id="floor-asset" src="./platform.glb"></a-asset-item>
+        <a-asset-item id="character-asset" src="./character.glb"></a-asset-item>
       </a-assets>
 
       <a-camera position="0 0 0"
@@ -89,14 +129,12 @@
 
       <a-entity id="marker" mindar-image-target="targetIndex: 0">
         <a-entity rotation="90 0 0" scale="0.25 0.25 0.25">
-          <a-entity id="platform" gltf-model="#phone-platform"
+          <a-entity id="floor" gltf-model="#floor-asset"
                     position="0 -0.05 0"></a-entity>
-
           <a-box position="0 0.6 -1.9" width="0.65" height="1.2"
                  depth="0.18" color="#e87935"></a-box>
-
           <a-entity id="player" rotation="0 180 0">
-            <a-entity id="character" gltf-model="#phone-character"></a-entity>
+            <a-entity id="character" gltf-model="#character-asset"></a-entity>
           </a-entity>
         </a-entity>
       </a-entity>
@@ -106,12 +144,11 @@
   <template id="tv-scene">
     <a-scene background="color: #7fb1d0" xr-mode-ui="enabled: false">
       <a-assets>
-        <a-asset-item id="tv-platform" src="./platform.glb"></a-asset-item>
+        <a-asset-item id="floor-asset" src="./platform.glb"></a-asset-item>
       </a-assets>
 
-      <a-entity id="platform" gltf-model="#tv-platform"
+      <a-entity id="floor" gltf-model="#floor-asset"
                 position="0 -0.05 0"></a-entity>
-
       <a-box position="0 0.6 -1.9" width="0.65" height="1.2"
              depth="0.18" color="#e87935"></a-box>
 
@@ -124,21 +161,22 @@
   </template>
 
   <script>
-    const relayUrl = 'wss://ardemorelay.onrender.com';
     const tvMode = new URLSearchParams(location.search).has('tv');
     const status = document.querySelector('#status');
     const template = document.querySelector(tvMode ? '#tv-scene' : '#phone-scene');
-
-    // Attach listeners before inserting the scene so early events are caught.
     const scene = template.content.cloneNode(true);
-    const platform = scene.querySelector('#platform');
-    const socketUrl = new URL(relayUrl);
-    socketUrl.searchParams.set('role', tvMode ? 'tv' : 'phone');
+    const floor = scene.querySelector('#floor');
+    const relayUrl = new URL('wss://ardemorelay.onrender.com');
 
+    relayUrl.searchParams.set('role', tvMode ? 'tv' : 'phone');
     let socket;
 
+    function relayConnected() {
+      return socket?.readyState === WebSocket.OPEN;
+    }
+
     function connectRelay(onMessage, onChange) {
-      socket = new WebSocket(socketUrl);
+      socket = new WebSocket(relayUrl);
       socket.addEventListener('open', onChange);
       socket.addEventListener('message', onMessage);
       socket.addEventListener('close', () => {
@@ -148,69 +186,153 @@
     }
 
     if (tvMode) {
-      const cameraRig = scene.querySelector('#camera-rig');
-      let platformFailed = false;
+      const rig = scene.querySelector('#camera-rig');
+      let floorFailed = false;
 
-      function showConnection() {
+      function showStatus() {
         status.hidden = false;
-        if (platformFailed) {
-          status.textContent = 'Could not load platform.glb.';
-        } else {
-          status.textContent = socket?.readyState === WebSocket.OPEN
+        status.textContent = floorFailed
+          ? 'Could not load platform.glb.'
+          : relayConnected()
             ? 'Waiting for the phone…'
             : 'Connecting to the TV relay…';
-        }
       }
 
-      platform.addEventListener('model-error', () => {
-        platformFailed = true;
-        showConnection();
+      floor.addEventListener('model-error', () => {
+        floorFailed = true;
+        showStatus();
       });
 
       connectRelay(event => {
-        const { x, z, yaw } = JSON.parse(event.data);
-        cameraRig.object3D.position.set(x, 0, z);
-        cameraRig.object3D.rotation.y = yaw + Math.PI;
-        if (!platformFailed) status.hidden = true;
-      }, showConnection);
+        let pose;
+        try {
+          pose = JSON.parse(event.data);
+        } catch {
+          return;
+        }
 
-      showConnection();
+        const { x, z, yaw } = pose ?? {};
+        if (![x, z, yaw].every(Number.isFinite) || !rig.object3D) return;
+
+        rig.object3D.position.set(x, 0, z);
+        rig.object3D.rotation.y = yaw + Math.PI;
+        if (!floorFailed) status.hidden = true;
+      }, showStatus);
+
+      showStatus();
     } else {
       const marker = scene.querySelector('#marker');
       const player = scene.querySelector('#player');
       const character = scene.querySelector('#character');
       const controls = document.querySelector('#controls');
-      const buttons = controls.querySelectorAll('button');
+      const reset = document.querySelector('#reset');
+      const stick = document.querySelector('#stick');
+      const knob = document.querySelector('#knob');
+      const landscape = matchMedia('(orientation: landscape)');
 
       let tracking = false;
-      let platformReady = false;
+      let floorReady = false;
       let characterReady = false;
       let error = '';
+      let pointerId = null;
       let movement = null;
       let mixer;
       let walk;
       let lastPose = '';
 
-      controls.hidden = false;
-
       function updateControls() {
-        const ready = tracking && platformReady && characterReady && !error;
-        for (const button of buttons) button.disabled = !ready;
+        const ready = landscape.matches && tracking &&
+          floorReady && characterReady && !error;
 
-        const gameMessage = error || (tracking
-          ? (ready ? 'Hold an arrow to move.' : 'Loading the models…')
-          : 'Point your camera at the marker.');
+        controls.hidden = !landscape.matches;
+        reset.disabled = !ready;
+        stick.setAttribute('aria-disabled', String(!ready));
 
-        const connectionMessage = socket?.readyState === WebSocket.OPEN
-          ? '' : ' Connecting to the TV relay…';
+        let message = error;
+        if (!message) {
+          if (!landscape.matches) {
+            message = 'Turn your phone sideways to play.';
+          } else if (!tracking) {
+            message = 'Point your camera at the marker.';
+          } else if (!ready) {
+            message = 'Loading the models…';
+          } else {
+            message = 'Drag the stick to move.';
+          }
+        }
 
-        status.textContent = gameMessage + connectionMessage;
+        status.textContent = message +
+          (relayConnected() ? '' : ' Connecting to the TV relay…');
       }
 
       function stopMoving() {
+        pointerId = null;
         movement = null;
+        knob.style.transform = 'translate(-50%, -50%)';
         if (walk) walk.paused = true;
       }
+
+      function moveStick(event) {
+        const bounds = stick.getBoundingClientRect();
+        const radius = (bounds.width - knob.offsetWidth) / 2;
+        if (radius <= 0) return;
+
+        const dx = event.clientX - (bounds.left + bounds.width / 2);
+        const dy = event.clientY - (bounds.top + bounds.height / 2);
+        const distance = Math.hypot(dx, dy);
+        const limit = distance > radius ? radius / distance : 1;
+
+        knob.style.transform =
+          `translate(-50%, -50%) translate(${dx * limit}px, ${dy * limit}px)`;
+
+        const strength = Math.min(distance / radius, 1);
+        const deadZone = 0.12;
+
+        if (strength <= deadZone) {
+          movement = null;
+          if (walk) walk.paused = true;
+          return;
+        }
+
+        const speedFactor = (strength - deadZone) / (1 - deadZone);
+        movement = {
+          x: dx / distance * speedFactor,
+          z: dy / distance * speedFactor
+        };
+
+        player.object3D.rotation.y = Math.atan2(movement.x, movement.z);
+      }
+
+      stick.addEventListener('pointerdown', event => {
+        if (reset.disabled || pointerId !== null) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+        pointerId = event.pointerId;
+        stick.setPointerCapture(pointerId);
+        moveStick(event);
+      });
+
+      stick.addEventListener('pointermove', event => {
+        if (event.pointerId === pointerId) moveStick(event);
+      });
+
+      for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+        stick.addEventListener(type, event => {
+          if (event.pointerId === pointerId) stopMoving();
+        });
+      }
+
+      reset.addEventListener('click', () => {
+        stopMoving();
+        player.object3D.position.set(0, 0, 0);
+        player.object3D.rotation.y = Math.PI;
+
+        if (walk) {
+          walk.reset().play();
+          mixer.update(0);
+          walk.paused = true;
+        }
+      });
 
       marker.addEventListener('targetFound', () => {
         tracking = true;
@@ -223,8 +345,18 @@
         updateControls();
       });
 
-      platform.addEventListener('model-loaded', () => {
-        platformReady = true;
+      landscape.addEventListener('change', () => {
+        stopMoving();
+        updateControls();
+      });
+
+      window.addEventListener('blur', stopMoving);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopMoving();
+      });
+
+      floor.addEventListener('model-loaded', () => {
+        floorReady = true;
         updateControls();
       });
 
@@ -243,64 +375,33 @@
         updateControls();
       });
 
-      for (const [entity, file] of [
-        [platform, 'platform.glb'],
+      for (const [entity, filename] of [
+        [floor, 'platform.glb'],
         [character, 'character.glb']
       ]) {
         entity.addEventListener('model-error', () => {
-          error = `Could not load ${file}.`;
+          error = `Could not load ${filename}.`;
           stopMoving();
           updateControls();
         });
       }
 
-      for (const button of controls.querySelectorAll('[data-x]')) {
-        button.addEventListener('pointerdown', event => {
-          if (button.disabled || movement) return;
-
-          button.setPointerCapture(event.pointerId);
-          movement = {
-            pointerId: event.pointerId,
-            x: Number(button.dataset.x),
-            z: Number(button.dataset.z)
-          };
-          player.object3D.rotation.y = Math.atan2(movement.x, movement.z);
-        });
-
-        for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-          button.addEventListener(type, event => {
-            if (movement?.pointerId === event.pointerId) stopMoving();
-          });
-        }
-      }
-
-      document.querySelector('#reset').addEventListener('click', () => {
+      marker.closest('a-scene').addEventListener('arError', () => {
+        error = 'Could not start AR. Check camera access and targets.mind.';
         stopMoving();
-        player.object3D.position.set(0, 0, 0);
-        player.object3D.rotation.y = Math.PI;
-
-        if (walk) {
-          walk.reset().play();
-          mixer.update(0);
-          walk.paused = true;
-        }
-      });
-
-      window.addEventListener('blur', stopMoving);
-      document.addEventListener('visibilitychange', () => {
-        if (document.hidden) stopMoving();
+        updateControls();
       });
 
       const speed = 1.3;
       const edge = 1.65;
       const clamp = value => Math.max(-edge, Math.min(edge, value));
-      let previousFrame;
+      let lastFrame;
 
       function frame(now) {
-        const dt = Math.min((now - (previousFrame ?? now)) / 1000, 0.05);
-        previousFrame = now;
+        const dt = Math.min((now - (lastFrame ?? now)) / 1000, 0.05);
+        lastFrame = now;
 
-        if (movement && tracking) {
+        if (movement) {
           const position = player.object3D.position;
           const x = clamp(position.x + movement.x * speed * dt);
           const z = clamp(position.z + movement.z * speed * dt);
@@ -319,16 +420,15 @@
       });
 
       setInterval(() => {
-        if (socket?.readyState !== WebSocket.OPEN || !player.object3D) return;
+        if (!relayConnected() || !player.object3D) return;
 
         const { x, z } = player.object3D.position;
         const yaw = player.object3D.rotation.y;
         const pose = JSON.stringify({ x, z, yaw });
 
-        if (pose !== lastPose) {
-          socket.send(pose);
-          lastPose = pose;
-        }
+        if (pose === lastPose) return;
+        socket.send(pose);
+        lastPose = pose;
       }, 50);
 
       updateControls();
