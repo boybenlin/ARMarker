@@ -146,7 +146,7 @@
 
   <template id="phone-scene">
     <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; filterMinCF: 0.0005; filterBeta: 100"
+      mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; filterMinCF: 0.0005; filterBeta: 50"
       xr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false">
       <a-assets>
@@ -235,6 +235,7 @@
 
       function applyPose() {
         if (!latestPose || !rig.object3D) return;
+
         const { x, y, z, yaw } = latestPose;
         rig.object3D.position.set(x, y, z);
         rig.object3D.rotation.y = yaw + Math.PI;
@@ -257,6 +258,7 @@
 
         const { x, y, z, yaw } = pose ?? {};
         if (![x, z, yaw].every(Number.isFinite)) return;
+
         latestPose = { x, y: Number.isFinite(y) ? y : SPAWN.y, z, yaw };
         applyPose();
         showStatus();
@@ -269,6 +271,7 @@
       const player = scene.querySelector('#player');
       const character = scene.querySelector('#character');
       const walkable = scene.querySelector('#walkable');
+
       const controls = document.querySelector('#controls');
       const reset = document.querySelector('#reset');
       const stick = document.querySelector('#stick');
@@ -307,6 +310,7 @@
       setSpawnPosition(player);
       mount.value = sessionStorage.getItem('ar-marker-mount') === 'upright'
         ? 'upright' : 'table';
+
       fullscreen.hidden = navigator.standalone === true ||
         matchMedia('(display-mode: standalone)').matches;
 
