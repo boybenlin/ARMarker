@@ -311,6 +311,12 @@
     let tvModelError = '';
 
     music.volume = 0.35;
+    applyAudioState();
+
+    function applyAudioState() {
+      video.muted = !tv || muted;
+      music.muted = !tv || muted;
+    }
     (rig || player).setAttribute('position', `${SPAWN.x} ${SPAWN.y} ${SPAWN.z}`);
 
     function online() {
@@ -320,7 +326,9 @@
     function refresh() {
       const inIntro = phase === 'intro';
       cutscene.hidden = !inIntro;
-      sound.hidden = !inIntro && !(tv && phase === 'game');
+      sound.hidden = tv;
+      sound.disabled = !online();
+      sound.textContent = muted ? 'Unmute TV' : 'Mute TV';
       byId('skip-video').hidden = tv;
 
       if (tv) {
@@ -445,10 +453,10 @@
     byId('skip-video').addEventListener('click', enterGame);
 
     sound.addEventListener('click', () => {
+      if (tv || !online()) return;
       muted = !muted;
-      video.muted = muted;
-      music.muted = muted;
-      sound.textContent = muted ? 'Unmute' : 'Mute';
+      lastMessage = '';
+      refresh();
     });
 
     video.addEventListener('ended', () => {
@@ -478,8 +486,13 @@
         return;
       }
 
-      const { x, y, z, yaw, introState, introId: id, introStartsAt, puzzle } = data ?? {};
+      const { x, y, z, yaw, introState, introId: id, introStartsAt, puzzle, tvMuted } = data ?? {};
       if (![x, z, yaw].every(Number.isFinite)) return;
+
+      if (typeof tvMuted === 'boolean' && muted !== tvMuted) {
+        muted = tvMuted;
+        applyAudioState();
+      }
 
       latestPose = { x, y: Number.isFinite(y) ? y : SPAWN.y, z, yaw };
       puzzleState = puzzle === 'memo' || puzzle === 'stone' ? puzzle : 'explore';
@@ -960,7 +973,8 @@
           introState: phase,
           introId,
           introStartsAt: startsAt,
-          puzzle: puzzleState
+          puzzle: puzzleState,
+          tvMuted: muted
         });
 
         if (message === lastMessage) return;
