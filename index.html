@@ -5,18 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>AR Walk Demo</title>
-
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-
   <style>
-    body { margin: 0; font: 15px system-ui, sans-serif; }
+    body { margin: 0; font: 15px system-ui, sans-serif; color: #202124; }
     [hidden] { display: none !important; }
 
-    #status, #controls, #setup, #fullscreen {
+    #status, #setup, #controls, #media-menu, #intro-actions, #fullscreen {
       position: fixed;
       z-index: 10;
-      color: #202124;
     }
 
     #status {
@@ -24,13 +21,44 @@
       left: 50%;
       transform: translateX(-50%);
       width: max-content;
-      max-width: 76vw;
+      max-width: 75vw;
       margin: 0;
-      padding: 9px 16px;
-      border-radius: 40px;
-      background: rgba(255, 255, 255, .84);
+      padding: 8px 14px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, .9);
       text-align: center;
       pointer-events: none;
+    }
+
+    #setup, #media-menu, #intro-actions {
+      left: 50%;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: 74vw;
+      padding: 8px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .89);
+      text-align: center;
+    }
+
+    #setup-note { margin: 5px 0; }
+
+    button, select {
+      margin: 3px;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      color: #202124;
+      background: white;
+      font: inherit;
+    }
+
+    button:disabled { opacity: .5; }
+
+    #fullscreen {
+      left: calc(env(safe-area-inset-left, 0px) + 12px);
+      bottom: max(12px, env(safe-area-inset-bottom));
     }
 
     #controls {
@@ -40,7 +68,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       touch-action: none;
       user-select: none;
       -webkit-user-select: none;
@@ -58,69 +86,59 @@
     }
 
     #reset {
-      display: grid;
-      place-items: center;
       width: 48px;
       height: 48px;
       padding: 0;
       color: white;
       text-shadow: 0 1px 4px rgba(0, 0, 0, .65);
       font: 27px/1 system-ui, sans-serif;
-      -webkit-appearance: none;
-      appearance: none;
     }
 
     #stick {
       position: relative;
       width: clamp(96px, 31vh, 142px);
       aspect-ratio: 1;
+      touch-action: none;
     }
 
     #knob {
       position: absolute;
-      top: 50%;
       left: 50%;
+      top: 50%;
       width: 42%;
       aspect-ratio: 1;
       border-radius: 50%;
+      background: white;
+      pointer-events: none;
       transform: translate(-50%, -50%);
-      background: rgba(255, 255, 255, .93);
       box-shadow: 0 2px 9px rgba(0, 0, 0, .16);
+    }
+
+    #intro-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
       pointer-events: none;
     }
 
-    #reset:disabled, #stick[aria-disabled="true"] { opacity: .45; }
-
-    #setup {
-      z-index: 12;
-      left: 50%;
-      bottom: max(18px, env(safe-area-inset-bottom));
-      transform: translateX(-50%);
-      width: min(80vw, 400px);
-      padding: 14px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, .92);
-      text-align: center;
+    #intro-canvas, #intro-video.tv-video {
+      width: min(100vw, calc(100dvh * 16 / 9));
+      aspect-ratio: 16 / 9;
+      height: auto;
+      object-fit: contain;
     }
 
-    #setup button, #setup select, #fullscreen {
-      padding: 9px 12px;
-      border: 1px solid rgba(255, 255, 255, .85);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, .90);
-      color: #202124;
-      font: inherit;
+    #intro-video.phone-source {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
 
-    #setup button, #setup select { margin: 4px; }
-    #setup p { margin: 6px 0 0; }
-
-    #fullscreen {
-      z-index: 13;
-      left: calc(env(safe-area-inset-left, 0px) + 12px);
-      bottom: max(12px, env(safe-area-inset-bottom));
-      border-radius: 20px;
-    }
+    #intro-actions { z-index: 21; }
   </style>
 </head>
 <body>
@@ -138,11 +156,31 @@
   </section>
 
   <div id="controls" role="group" aria-label="Character controls" hidden>
-    <button id="reset" type="button" aria-label="Reset Tim" disabled>↺</button>
-    <div id="stick" role="group" aria-label="Drag to move Tim" aria-disabled="true">
+    <button id="reset" type="button" aria-label="Reset Tim">↺</button>
+    <div id="stick" aria-label="Drag to move Tim">
       <span id="knob" aria-hidden="true"></span>
     </div>
   </div>
+
+  <div id="media-menu" hidden>
+    <button id="play-both" type="button" hidden>Play on both screens</button>
+    <button id="preview" type="button">Test intro on this screen</button>
+    <button id="enable-tv" type="button" hidden>Enable TV audio</button>
+    <button id="skip-to-game" type="button" hidden>Skip intro</button>
+  </div>
+
+  <div id="intro-layer" hidden>
+    <canvas id="intro-canvas" width="1280" height="720" hidden></canvas>
+    <video id="intro-video" playsinline preload="auto"></video>
+  </div>
+
+  <div id="intro-actions" hidden>
+    <button id="resume-intro" type="button" hidden>Start video with audio</button>
+    <button id="mute-intro" type="button" aria-pressed="false">Mute</button>
+    <button id="skip-intro" type="button">Skip intro</button>
+  </div>
+
+  <audio id="game-music" src="./game-music.mp3" preload="metadata" loop></audio>
 
   <template id="phone-scene">
     <a-scene
@@ -154,10 +192,8 @@
         <a-asset-item id="character-asset" src="./character.glb?v=tim-20261126"></a-asset-item>
         <a-asset-item id="walkable-asset" src="./top-walkable.glb"></a-asset-item>
       </a-assets>
-
       <a-camera position="0 0 0" look-controls="enabled: false"
                 wasd-controls="enabled: false"></a-camera>
-
       <a-entity id="marker" mindar-image-target="targetIndex: 0">
         <a-entity id="board" rotation="90 0 0" scale="0.026 0.026 0.026">
           <a-entity position="-2.01 0 -1.53">
@@ -190,212 +226,511 @@
   <script>
     const SPAWN = { x: 5, y: 10.301, z: 1.25 };
     const WALK_SPEED = 1.3;
+    const INTRO_LEAD_MS = 1800;
 
     const tvMode = new URLSearchParams(location.search).has('tv');
-    const status = document.querySelector('#status');
-    const template = document.querySelector(tvMode ? '#tv-scene' : '#phone-scene');
-    const scene = template.content.cloneNode(true);
+    const byId = id => document.getElementById(id);
+    const scene = byId(tvMode ? 'tv-scene' : 'phone-scene').content.cloneNode(true);
     const sceneElement = scene.querySelector('a-scene');
     const floor = scene.querySelector('#floor');
+    const player = scene.querySelector('#player');
+    const rig = scene.querySelector('#camera-rig');
+    const status = byId('status');
+    const menu = byId('media-menu');
+    const layer = byId('intro-layer');
+    const canvas = byId('intro-canvas');
+    const video = byId('intro-video');
+    const music = byId('game-music');
+    const introActions = byId('intro-actions');
+    const resumeIntro = byId('resume-intro');
+    const muteIntro = byId('mute-intro');
+    const playBoth = byId('play-both');
+    const preview = byId('preview');
+    const enableTV = byId('enable-tv');
+    const skipToGame = byId('skip-to-game');
 
-    const relayUrl = new URL('wss://ardemorelay.onrender.com');
-    relayUrl.searchParams.set('role', tvMode ? 'tv' : 'phone');
     let socket;
+    let intro = { state: 'idle', id: '', startsAt: 0 };
+    let activeIntro = null;
+    let introTimer;
+    let gameStarted = false;
+    let mediaMessage = '';
+    let lastPose = '';
+    let tvAudioReady = false;
+    let painter;
+    let refreshPhone = () => {};
+    let stopWalking = () => {};
+    let latestPose;
+    let tvFloorFailed = false;
+    let phoneCanPreview = false;
+    let phoneCanPlay = false;
 
-    function relayConnected() {
+    // Set the correct source before assigning it to the video element.
+    video.className = tvMode ? 'tv-video' : 'phone-source';
+    video.src = tvMode ? './intro-alpha.webm' : './intro-packed-alpha.mp4';
+    canvas.hidden = tvMode;
+    video.volume = 1;
+    music.volume = 0.35;
+
+    (rig || player).setAttribute('position', `${SPAWN.x} ${SPAWN.y} ${SPAWN.z}`);
+
+    function connected() {
       return socket?.readyState === WebSocket.OPEN;
     }
 
-    function connectRelay(onMessage, onChange) {
-      socket = new WebSocket(relayUrl);
-      socket.addEventListener('message', onMessage);
-      socket.addEventListener('open', onChange);
-      socket.addEventListener('close', () => {
-        onChange();
-        setTimeout(() => connectRelay(onMessage, onChange), 2000);
+    function refresh() {
+      const introVisible = Boolean(activeIntro);
+      menu.hidden = introVisible || (tvMode ? gameStarted : !phoneCanPreview || gameStarted);
+      playBoth.hidden = tvMode;
+      playBoth.disabled = !phoneCanPlay || !connected();
+      skipToGame.hidden = tvMode || !phoneCanPlay;
+      enableTV.hidden = !tvMode || tvAudioReady;
+      introActions.hidden = !introVisible;
+      byId('skip-intro').hidden = tvMode && introVisible && !activeIntro.local;
+
+      if (tvMode) {
+        status.hidden = !mediaMessage && !tvFloorFailed && gameStarted && connected();
+        status.textContent = mediaMessage || (tvFloorFailed ? 'Could not load interior.glb.'
+          : !connected() ? 'Connecting to the TV relay…'
+          : gameStarted ? 'Following Tim…'
+          : tvAudioReady ? 'Ready for the phone.' : 'Enable TV audio before the intro.');
+      } else {
+        refreshPhone();
+      }
+    }
+
+    // Recombine the phone video's RGB picture and grayscale alpha mask.
+    function makePainter() {
+      const gl = canvas.getContext('webgl', {
+        alpha: true,
+        premultipliedAlpha: false
+      });
+      if (!gl) throw new Error('WebGL unavailable');
+
+      function shader(type, source) {
+        const result = gl.createShader(type);
+        gl.shaderSource(result, source);
+        gl.compileShader(result);
+        if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) {
+          throw new Error(gl.getShaderInfoLog(result));
+        }
+        return result;
+      }
+
+      const program = gl.createProgram();
+      gl.attachShader(program, shader(gl.VERTEX_SHADER, `
+        attribute vec2 position;
+        varying vec2 uv;
+        void main() {
+          uv = vec2((position.x + 1.0) * 0.5, (1.0 - position.y) * 0.5);
+          gl_Position = vec4(position, 0.0, 1.0);
+        }
+      `));
+      gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `
+        precision mediump float;
+        varying vec2 uv;
+        uniform sampler2D packedFrame;
+        void main() {
+          vec2 colourUV = vec2(uv.x, mix(0.5 / 1440.0, 719.5 / 1440.0, uv.y));
+          vec2 alphaUV = vec2(uv.x, mix(720.5 / 1440.0, 1439.5 / 1440.0, uv.y));
+          vec3 colour = texture2D(packedFrame, colourUV).rgb;
+          vec3 mask = texture2D(packedFrame, alphaUV).rgb;
+          float alpha = dot(mask, vec3(0.2126, 0.7152, 0.0722));
+          gl_FragColor = vec4(colour, alpha);
+        }
+      `));
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(program));
+      }
+
+      gl.useProgram(program);
+      const vertices = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
+      gl.bufferData(gl.ARRAY_BUFFER,
+        new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      const attribute = gl.getAttribLocation(program, 'position');
+      gl.enableVertexAttribArray(attribute);
+      gl.vertexAttribPointer(attribute, 2, gl.FLOAT, false, 0, 0);
+
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      return () => {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      };
+    }
+
+    function drawIntro(active) {
+      if (activeIntro !== active || tvMode) return;
+
+      try {
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) painter();
+      } catch {
+        mediaMessage = 'Could not draw the transparent intro. You can skip to the game.';
+        refresh();
+        return;
+      }
+
+      requestAnimationFrame(() => drawIntro(active));
+    }
+
+    function startMusic() {
+      if (!tvMode) return;
+      music.play().catch(() => {
+        mediaMessage = 'Tap Enable TV audio to start the gameplay music.';
+        menu.hidden = false;
+        enableTV.hidden = false;
+        refresh();
+        menu.hidden = false;
+        enableTV.hidden = false;
       });
     }
 
-    function setSpawnPosition(entity) {
-      entity.setAttribute('position', `${SPAWN.x} ${SPAWN.y} ${SPAWN.z}`);
+    function finishIntro(enterGame) {
+      clearTimeout(introTimer);
+      activeIntro = null;
+      video.pause();
+      layer.hidden = true;
+      resumeIntro.hidden = true;
+      mediaMessage = '';
+      if (enterGame) {
+        gameStarted = true;
+        startMusic();
+      }
+      refresh();
+    }
+
+    function signalGameStart() {
+      if (!tvMode) {
+        intro = { ...intro, state: 'game' };
+        lastPose = '';
+      }
+      finishIntro(true);
+    }
+
+    function playActiveIntro(active, catchUp) {
+      if (activeIntro !== active) return;
+
+      if (catchUp && Number.isFinite(video.duration)) {
+        const elapsed = Math.max(0, (Date.now() - active.startsAt) / 1000);
+        if (elapsed >= video.duration) {
+          finishIntro(!active.local);
+          return;
+        }
+        if (elapsed > 0.1) video.currentTime = elapsed;
+      }
+
+      video.play().then(() => {
+        if (activeIntro !== active) return;
+        resumeIntro.hidden = true;
+        mediaMessage = '';
+        refresh();
+      }).catch(() => {
+        if (activeIntro !== active) return;
+        resumeIntro.hidden = false;
+        mediaMessage = 'Tap Start video with audio on this screen.';
+        refresh();
+      });
+    }
+
+    function showIntro(active, delay = 0) {
+      clearTimeout(introTimer);
+      stopWalking();
+      music.pause();
+      activeIntro = active;
+      layer.hidden = false;
+      resumeIntro.hidden = true;
+      mediaMessage = '';
+
+      try {
+        if (!tvMode) {
+          painter ??= makePainter();
+          requestAnimationFrame(() => drawIntro(active));
+        }
+        if (video.readyState >= HTMLMediaElement.HAVE_METADATA) video.currentTime = 0;
+      } catch {
+        mediaMessage = 'Could not initialise transparent playback. Skip intro to continue.';
+        refresh();
+        return;
+      }
+
+      refresh();
+      if (delay > 0) {
+        introTimer = setTimeout(() => playActiveIntro(active, true), delay);
+      } else {
+        playActiveIntro(active, !active.local);
+      }
+    }
+
+    preview.addEventListener('click', () => {
+      showIntro({ local: true, startsAt: Date.now() });
+    });
+
+    enableTV.addEventListener('click', async () => {
+      const audio = gameStarted ? music : video;
+
+      try {
+        await audio.play();
+        if (!gameStarted) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
+        tvAudioReady = true;
+        mediaMessage = '';
+      } catch {
+        mediaMessage = 'TV audio is still blocked. Try Enable TV audio again.';
+      }
+      refresh();
+    });
+
+    playBoth.addEventListener('click', async () => {
+      if (playBoth.disabled || activeIntro) return;
+
+      // Prepare this video element directly from the phone's Play tap.
+      playBoth.disabled = true;
+      try {
+        await video.play();
+        video.pause();
+        video.currentTime = 0;
+      } catch {
+        mediaMessage = 'Could not prepare the phone intro. Try again or skip.';
+        refresh();
+        return;
+      }
+
+      if (!connected()) {
+        mediaMessage = 'The TV relay disconnected. Try again when it reconnects.';
+        refresh();
+        return;
+      }
+
+      intro = {
+        state: 'intro',
+        id: String(Date.now()),
+        startsAt: Date.now() + INTRO_LEAD_MS
+      };
+      lastPose = '';
+      showIntro({ ...intro, local: false }, INTRO_LEAD_MS);
+    });
+
+    resumeIntro.addEventListener('click', () => {
+      if (activeIntro) playActiveIntro(activeIntro, !activeIntro.local);
+    });
+
+    muteIntro.addEventListener('click', () => {
+      video.muted = !video.muted;
+      muteIntro.textContent = video.muted ? 'Unmute' : 'Mute';
+      muteIntro.setAttribute('aria-pressed', String(video.muted));
+    });
+
+    byId('skip-intro').addEventListener('click', () => {
+      if (activeIntro?.local) finishIntro(false);
+      else signalGameStart();
+    });
+
+    skipToGame.addEventListener('click', signalGameStart);
+
+    video.addEventListener('ended', () => {
+      if (!activeIntro) return;
+      if (activeIntro.local) finishIntro(false);
+      else signalGameStart();
+    });
+
+    video.addEventListener('error', () => {
+      mediaMessage = 'Could not load the intro video. Check the uploaded filename.';
+      refresh();
+    });
+
+    function applyTVPose() {
+      if (!latestPose || !rig?.object3D) return;
+      const { x, y, z, yaw } = latestPose;
+      rig.object3D.position.set(x, y, z);
+      rig.object3D.rotation.y = yaw + Math.PI;
+    }
+
+    let lastTVIntroId = '';
+
+    function receiveTVMessage(event) {
+      let pose;
+      try {
+        pose = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+
+      const { x, y, z, yaw, introState, introId, introStartsAt } = pose ?? {};
+      if (![x, z, yaw].every(Number.isFinite)) return;
+
+      latestPose = { x, y: Number.isFinite(y) ? y : SPAWN.y, z, yaw };
+      applyTVPose();
+
+      if (introState === 'intro' && typeof introId === 'string' &&
+          Number.isFinite(introStartsAt) && introId !== lastTVIntroId) {
+        lastTVIntroId = introId;
+        gameStarted = false;
+        const delay = Math.max(0, introStartsAt - Date.now());
+        showIntro({ local: false, startsAt: introStartsAt }, delay);
+      } else if (introState === 'game' && !gameStarted) {
+        finishIntro(true);
+      }
+      refresh();
+    }
+
+    function connectRelay() {
+      const url = new URL('wss://ardemorelay.onrender.com');
+      url.searchParams.set('role', tvMode ? 'tv' : 'phone');
+      socket = new WebSocket(url);
+      if (tvMode) socket.addEventListener('message', receiveTVMessage);
+      socket.addEventListener('open', () => {
+        lastPose = '';
+        refresh();
+      });
+      socket.addEventListener('close', () => {
+        refresh();
+        setTimeout(connectRelay, 2000);
+      });
     }
 
     if (tvMode) {
-      const rig = scene.querySelector('#camera-rig');
-      let floorFailed = false;
-      let latestPose = null;
-
-      setSpawnPosition(rig);
-
-      function showStatus() {
-        status.hidden = !floorFailed && relayConnected() && Boolean(latestPose);
-        status.textContent = floorFailed ? 'Could not load interior.glb.'
-          : relayConnected() ? 'Waiting for the phone…' : 'Connecting to the TV relay…';
-      }
-
-      function applyPose() {
-        if (!latestPose || !rig.object3D) return;
-
-        const { x, y, z, yaw } = latestPose;
-        rig.object3D.position.set(x, y, z);
-        rig.object3D.rotation.y = yaw + Math.PI;
-      }
-
-      sceneElement.addEventListener('loaded', applyPose);
-
+      sceneElement.addEventListener('loaded', applyTVPose);
       floor.addEventListener('model-error', () => {
-        floorFailed = true;
-        showStatus();
+        tvFloorFailed = true;
+        refresh();
       });
-
-      connectRelay(event => {
-        let pose;
-        try {
-          pose = JSON.parse(event.data);
-        } catch {
-          return;
-        }
-
-        const { x, y, z, yaw } = pose ?? {};
-        if (![x, z, yaw].every(Number.isFinite)) return;
-
-        latestPose = { x, y: Number.isFinite(y) ? y : SPAWN.y, z, yaw };
-        applyPose();
-        showStatus();
-      }, showStatus);
-
-      showStatus();
     } else {
       const marker = scene.querySelector('#marker');
       const board = scene.querySelector('#board');
-      const player = scene.querySelector('#player');
       const character = scene.querySelector('#character');
       const walkable = scene.querySelector('#walkable');
-
-      const controls = document.querySelector('#controls');
-      const reset = document.querySelector('#reset');
-      const stick = document.querySelector('#stick');
-      const knob = document.querySelector('#knob');
-      const setup = document.querySelector('#setup');
-      const mount = document.querySelector('#mount');
-      const start = document.querySelector('#start-ar');
-      const fullscreen = document.querySelector('#fullscreen');
-      const note = document.querySelector('#setup-note');
+      const controls = byId('controls');
+      const reset = byId('reset');
+      const stick = byId('stick');
+      const knob = byId('knob');
+      const setup = byId('setup');
+      const mount = byId('mount');
+      const start = byId('start-ar');
+      const fullscreen = byId('fullscreen');
+      const note = byId('setup-note');
       const landscape = matchMedia('(orientation: landscape)');
-
-      const { Raycaster, Vector3, DoubleSide } = AFRAME.THREE;
-      const groundRay = new Raycaster();
+      const { Raycaster, Vector3, DoubleSide, AnimationMixer } = AFRAME.THREE;
+      const ray = new Raycaster();
       const rayStart = new Vector3();
       const rayEnd = new Vector3();
-      const rayDirection = new Vector3();
+      const direction = new Vector3();
 
       let arSystem;
       let started = false;
+      let tracking = false;
       let needsRestart = false;
       let fullscreenHelp = false;
-      let tracking = false;
       let floorReady = false;
       let characterReady = false;
-      let walkableMesh = null;
+      let walkableMesh;
       let spawnChecked = false;
       let spawnValid = false;
       let error = '';
       let pointerId = null;
-      let movement = null;
+      let movement;
       let mixer;
       let walk;
-      let lastPose = '';
-      let lastFrame;
+      let previousFrame;
 
-      setSpawnPosition(player);
       mount.value = sessionStorage.getItem('ar-marker-mount') === 'upright'
         ? 'upright' : 'table';
-
       fullscreen.hidden = navigator.standalone === true ||
         matchMedia('(display-mode: standalone)').matches;
 
-      function updateControls() {
+      refreshPhone = () => {
         const assetsReady = floorReady && characterReady && Boolean(walkableMesh);
         const ready = landscape.matches && started && !needsRestart &&
           tracking && assetsReady && spawnValid && !error;
 
+        phoneCanPreview = ready;
+        phoneCanPlay = ready && video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+        menu.hidden = !phoneCanPreview || Boolean(activeIntro) || gameStarted;
+        playBoth.disabled = !phoneCanPlay || !connected();
+        skipToGame.disabled = !phoneCanPreview;
+
+        controls.hidden = !ready || !gameStarted || Boolean(activeIntro);
         setup.hidden = started && !needsRestart && !fullscreenHelp;
         mount.disabled = started && !needsRestart;
         start.hidden = started && !needsRestart;
         start.disabled = !landscape.matches || !arSystem;
         start.textContent = needsRestart ? 'Reload AR' : 'Start AR';
-
         note.textContent = fullscreenHelp
           ? 'In Safari, use Share → Add to Home Screen → Open as Web App.'
-          : needsRestart ? 'Turn sideways, reload, then tap Start AR.'
           : 'Choose how your marker is mounted.';
 
-        controls.hidden = !landscape.matches || !started || needsRestart;
-        reset.disabled = !ready;
-        stick.setAttribute('aria-disabled', String(!ready));
-
-        let message = error;
+        let message = error || mediaMessage;
         if (!message) {
-          if (!landscape.matches) message = 'Turn your phone sideways to play.';
-          else if (needsRestart) message = 'Reload to align the AR camera.';
+          if (!landscape.matches) message = 'Turn your phone sideways.';
+          else if (needsRestart) message = 'Reload AR to align the camera.';
           else if (!started) message = 'Choose your marker position and start AR.';
-          else if (!tracking) message = 'Point your camera at the marker.';
+          else if (!tracking) message = 'Point the camera at the marker.';
           else if (!assetsReady || !spawnChecked) message = 'Loading the top level…';
-          else if (!spawnValid) message = 'Tim’s spawn is outside the walkable surface. Check SPAWN in index.html.';
-          else message = 'Drag the stick to move Tim.';
+          else if (!spawnValid) message = 'Tim’s spawn is outside the walkable surface.';
+          else if (activeIntro) message = '';
+          else if (gameStarted) message = 'Drag the stick to move Tim.';
+          else if (!connected()) message = 'Connecting to the TV relay…';
+          else if (!phoneCanPlay) message = 'Loading the intro…';
+          else message = 'Ready to play.';
         }
 
-        status.textContent = message +
-          (relayConnected() ? '' : ' Connecting to the TV relay…');
-      }
+        status.textContent = message;
+        status.hidden = !message;
+      };
 
-      function stopMoving() {
+      stopWalking = () => {
         pointerId = null;
         movement = null;
         knob.style.transform = 'translate(-50%, -50%)';
         if (walk) walk.paused = true;
-      }
+      };
 
-      function findGround(x, z, currentY) {
+      function findGround(x, z, y) {
         const level = player.object3D?.parent;
         if (!walkableMesh || !level) return null;
 
         level.updateWorldMatrix(true, false);
         walkableMesh.updateWorldMatrix(true, true);
+        level.localToWorld(rayStart.set(x, y + 0.25, z));
+        level.localToWorld(rayEnd.set(x, y - 0.30, z));
+        direction.subVectors(rayEnd, rayStart);
+        ray.far = direction.length();
+        if (ray.far === 0) return null;
 
-        rayStart.set(x, currentY + 0.25, z);
-        rayEnd.set(x, currentY - 0.30, z);
-        level.localToWorld(rayStart);
-        level.localToWorld(rayEnd);
-
-        rayDirection.subVectors(rayEnd, rayStart);
-        groundRay.far = rayDirection.length();
-        if (groundRay.far === 0) return null;
-
-        groundRay.set(rayStart, rayDirection.normalize());
-        const [hit] = groundRay.intersectObject(walkableMesh, true);
+        ray.set(rayStart, direction.normalize());
+        const [hit] = ray.intersectObject(walkableMesh, true);
         return hit ? level.worldToLocal(hit.point).y : null;
       }
 
       function placeAtSpawn() {
         const y = findGround(SPAWN.x, SPAWN.z, SPAWN.y);
-        spawnValid = y !== null;
         spawnChecked = true;
-
+        spawnValid = y !== null;
         if (spawnValid) {
           player.object3D.position.set(SPAWN.x, y, SPAWN.z);
           player.object3D.rotation.y = Math.PI;
         }
       }
 
-      function checkSpawnWhenReady() {
+      function checkSpawn() {
         if (tracking && walkableMesh && !spawnChecked) placeAtSpawn();
-        updateControls();
+        refresh();
       }
 
       sceneElement.addEventListener('loaded', () => {
         arSystem = sceneElement.systems['mindar-image-system'];
-        updateControls();
+        refresh();
       });
 
       start.addEventListener('click', async () => {
@@ -412,14 +747,13 @@
         board.setAttribute('position', upright ? '0 0 0.25' : '0 0 0');
         started = true;
         fullscreenHelp = false;
-        updateControls();
-
+        refresh();
         try {
           await arSystem.start();
         } catch {
-          error = 'Could not start AR. Check camera access and reload.';
+          error = 'Could not start AR. Check camera access.';
           needsRestart = true;
-          updateControls();
+          refresh();
         }
       });
 
@@ -429,7 +763,7 @@
           await document.documentElement.requestFullscreen();
         } catch {
           fullscreenHelp = true;
-          updateControls();
+          refresh();
         }
       });
 
@@ -437,39 +771,104 @@
         fullscreen.hidden = Boolean(document.fullscreenElement);
       });
 
+      marker.addEventListener('targetFound', () => {
+        tracking = true;
+        requestAnimationFrame(checkSpawn);
+      });
+
+      marker.addEventListener('targetLost', () => {
+        tracking = false;
+        stopWalking();
+        refresh();
+      });
+
+      landscape.addEventListener('change', () => {
+        if (started) needsRestart = true;
+        stopWalking();
+        refresh();
+      });
+
+      window.addEventListener('blur', stopWalking);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopWalking();
+      });
+
+      video.addEventListener('canplay', refresh);
+
+      floor.addEventListener('model-loaded', () => {
+        floorReady = true;
+        refresh();
+      });
+
+      character.addEventListener('model-loaded', event => {
+        const model = event.detail.model;
+        const clip = model.animations?.[0];
+        if (clip) {
+          mixer = new AnimationMixer(model);
+          walk = mixer.clipAction(clip).play();
+          mixer.update(0);
+          walk.paused = true;
+        }
+        characterReady = true;
+        refresh();
+      });
+
+      walkable.addEventListener('model-loaded', event => {
+        walkableMesh = event.detail.model;
+        walkableMesh.traverse(object => {
+          if (!object.isMesh) return;
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          for (const material of materials) material.side = DoubleSide;
+        });
+        requestAnimationFrame(checkSpawn);
+      });
+
+      for (const [entity, filename] of [
+        [floor, 'interior.glb'],
+        [character, 'character.glb'],
+        [walkable, 'top-walkable.glb']
+      ]) {
+        entity.addEventListener('model-error', () => {
+          error = `Could not load ${filename}.`;
+          stopWalking();
+          refresh();
+        });
+      }
+
+      sceneElement.addEventListener('arError', () => {
+        error = 'Could not start AR. Check camera access and targets.mind.';
+        needsRestart = true;
+        stopWalking();
+        refresh();
+      });
+
       function moveStick(event) {
         const bounds = stick.getBoundingClientRect();
         const radius = (bounds.width - knob.offsetWidth) / 2;
         if (radius <= 0) return;
 
-        const dx = event.clientX - (bounds.left + bounds.width / 2);
-        const dy = event.clientY - (bounds.top + bounds.height / 2);
+        const dx = event.clientX - bounds.left - bounds.width / 2;
+        const dy = event.clientY - bounds.top - bounds.height / 2;
         const distance = Math.hypot(dx, dy);
         const knobScale = distance > radius ? radius / distance : 1;
-
         knob.style.transform =
           `translate(-50%, -50%) translate(${dx * knobScale}px, ${dy * knobScale}px)`;
 
         const strength = Math.min(distance / radius, 1);
-        const deadZone = 0.12;
-        if (strength <= deadZone) {
+        if (strength <= 0.12) {
           movement = null;
           if (walk) walk.paused = true;
           return;
         }
 
-        const throttle = (strength - deadZone) / (1 - deadZone);
-        movement = {
-          x: dx / distance * throttle,
-          z: dy / distance * throttle
-        };
+        const throttle = (strength - 0.12) / 0.88;
+        movement = { x: dx / distance * throttle, z: dy / distance * throttle };
         player.object3D.rotation.y = Math.atan2(movement.x, movement.z);
       }
 
       stick.addEventListener('pointerdown', event => {
-        if (reset.disabled || pointerId !== null) return;
+        if (controls.hidden || pointerId !== null) return;
         if (event.pointerType === 'mouse' && event.button !== 0) return;
-
         pointerId = event.pointerId;
         stick.setPointerCapture(pointerId);
         moveStick(event);
@@ -481,119 +880,36 @@
 
       for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
         stick.addEventListener(type, event => {
-          if (event.pointerId === pointerId) stopMoving();
+          if (event.pointerId === pointerId) stopWalking();
         });
       }
 
       reset.addEventListener('click', () => {
-        stopMoving();
+        stopWalking();
         placeAtSpawn();
-
         if (walk) {
           walk.reset().play();
           mixer.update(0);
           walk.paused = true;
         }
-
-        updateControls();
-      });
-
-      marker.addEventListener('targetFound', () => {
-        tracking = true;
-        // MindAR applies the marker transform after dispatching this event.
-        requestAnimationFrame(checkSpawnWhenReady);
-      });
-
-      marker.addEventListener('targetLost', () => {
-        tracking = false;
-        stopMoving();
-        updateControls();
-      });
-
-      landscape.addEventListener('change', () => {
-        if (started) needsRestart = true;
-        stopMoving();
-        updateControls();
-      });
-
-      window.addEventListener('blur', stopMoving);
-      document.addEventListener('visibilitychange', () => {
-        if (document.hidden) stopMoving();
-      });
-
-      floor.addEventListener('model-loaded', () => {
-        floorReady = true;
-        updateControls();
-      });
-
-      character.addEventListener('model-loaded', event => {
-        const model = event.detail.model;
-        const clip = model.animations?.[0];
-
-        if (clip) {
-          mixer = new AFRAME.THREE.AnimationMixer(model);
-          walk = mixer.clipAction(clip).play();
-          mixer.update(0);
-          walk.paused = true;
-        }
-
-        characterReady = true;
-        updateControls();
-      });
-
-      walkable.addEventListener('model-loaded', event => {
-        walkableMesh = event.detail.model;
-        walkableMesh.traverse(object => {
-          if (!object.isMesh) return;
-
-          const materials = Array.isArray(object.material)
-            ? object.material : [object.material];
-          for (const material of materials) material.side = DoubleSide;
-        });
-
-        checkSpawnWhenReady();
-      });
-
-      for (const [entity, file] of [
-        [floor, 'interior.glb'],
-        [character, 'character.glb'],
-        [walkable, 'top-walkable.glb']
-      ]) {
-        entity.addEventListener('model-error', () => {
-          error = `Could not load ${file}.`;
-          stopMoving();
-          updateControls();
-        });
-      }
-
-      sceneElement.addEventListener('arError', () => {
-        error = 'Could not start AR. Check camera access and targets.mind.';
-        needsRestart = true;
-        stopMoving();
-        updateControls();
+        refresh();
       });
 
       function frame(now) {
-        const dt = Math.min((now - (lastFrame ?? now)) / 1000, 0.05);
-        lastFrame = now;
+        const dt = Math.min((now - (previousFrame ?? now)) / 1000, 0.05);
+        previousFrame = now;
 
-        if (movement && tracking && spawnValid) {
+        if (movement && tracking && spawnValid && gameStarted && !activeIntro) {
           const position = player.object3D.position;
           const nextX = position.x + movement.x * WALK_SPEED * dt;
           const nextZ = position.z + movement.z * WALK_SPEED * dt;
-          const candidates = [
-            [nextX, nextZ],
-            [nextX, position.z],
-            [position.x, nextZ]
-          ];
-
+          const candidates = [[nextX, nextZ], [nextX, position.z], [position.x, nextZ]];
           let moved = false;
+
           for (const [x, z] of candidates) {
             if (Math.hypot(x - position.x, z - position.z) < 0.0001) continue;
-
             const ground = findGround(x, z, position.y);
             if (ground === null) continue;
-
             position.set(x, ground, z);
             moved = true;
             break;
@@ -606,28 +922,27 @@
         requestAnimationFrame(frame);
       }
 
-      connectRelay(() => {}, () => {
-        lastPose = '';
-        updateControls();
-      });
-
       setInterval(() => {
-        if (!relayConnected() || !spawnValid || !player.object3D) return;
-
+        if (!connected() || !spawnValid || !player.object3D) return;
         const { x, y, z } = player.object3D.position;
         const yaw = player.object3D.rotation.y;
-        const pose = JSON.stringify({ x, y, z, yaw });
-
+        const pose = JSON.stringify({
+          x, y, z, yaw,
+          introState: intro.state,
+          introId: intro.id,
+          introStartsAt: intro.startsAt
+        });
         if (pose === lastPose) return;
         socket.send(pose);
         lastPose = pose;
       }, 50);
 
-      updateControls();
       requestAnimationFrame(frame);
     }
 
     document.body.append(scene);
+    connectRelay();
+    refresh();
   </script>
 </body>
 </html>
