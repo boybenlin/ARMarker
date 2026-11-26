@@ -15,6 +15,8 @@
       font: 15px -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     }
 
+    [hidden] { display: none !important; }
+
     #status, #controls, #setup, #fullscreen {
       position: fixed;
       z-index: 10;
@@ -25,7 +27,7 @@
       left: 50%;
       transform: translateX(-50%);
       width: max-content;
-      max-width: 75vw;
+      max-width: 76vw;
       margin: 0;
       padding: 9px 16px;
       border-radius: 40px;
@@ -48,8 +50,6 @@
       -webkit-user-select: none;
       -webkit-touch-callout: none;
     }
-
-    #controls[hidden] { display: none; }
 
     #reset, #stick {
       box-sizing: border-box;
@@ -139,7 +139,7 @@
       <option value="upright">Upright on a screen or wall</option>
     </select>
     <button id="start-ar" type="button" disabled>Start AR</button>
-    <p id="setup-note" role="status"></p>
+    <p id="setup-note"></p>
   </section>
 
   <div id="controls" role="group" aria-label="Character controls" hidden>
@@ -155,8 +155,8 @@
              device-orientation-permission-ui="enabled: false">
       <a-assets>
         <a-asset-item id="floor-asset" src="./interior.glb"></a-asset-item>
-        <a-asset-item id="character-asset"
-                      src="./character.glb?v=tim-20261126"></a-asset-item>
+        <a-asset-item id="character-asset" src="./character.glb?v=tim-20261126"></a-asset-item>
+        <a-asset-item id="walkable-asset" src="./top-walkable.glb"></a-asset-item>
       </a-assets>
 
       <a-camera position="0 0 0"
@@ -165,10 +165,15 @@
 
       <a-entity id="marker" mindar-image-target="targetIndex: 0">
         <a-entity id="board" rotation="90 0 0" scale="0.026 0.026 0.026">
-          <a-entity id="floor" gltf-model="#floor-asset"></a-entity>
-          <a-entity id="player" position="0 3 0" rotation="0 180 0">
-            <a-entity id="character" gltf-model="#character-asset"
-                      scale="0.966 0.966 0.966" position="0 -0.01 0"></a-entity>
+          <a-entity position="-2.01 0 -1.53">
+            <a-entity id="floor" gltf-model="#floor-asset"></a-entity>
+            <a-entity id="walkable" gltf-model="#walkable-asset" visible="false"></a-entity>
+
+            <a-entity id="player" rotation="0 180 0">
+              <a-entity id="character" gltf-model="#character-asset"
+                        scale="0.966 0.966 0.966"
+                        position="0 -0.01 0"></a-entity>
+            </a-entity>
           </a-entity>
         </a-entity>
       </a-entity>
@@ -176,14 +181,15 @@
   </template>
 
   <template id="tv-scene">
-    <a-scene background="color: #7fb1d0" xr-mode-ui="enabled: false">
+    <a-scene background="color: #7fb1d0" xr-mode-ui="enabled: false"
+             device-orientation-permission-ui="enabled: false">
       <a-assets>
         <a-asset-item id="floor-asset" src="./interior.glb"></a-asset-item>
       </a-assets>
 
       <a-entity id="floor" gltf-model="#floor-asset"></a-entity>
 
-      <a-entity id="camera-rig" position="0 3 0">
+      <a-entity id="camera-rig">
         <a-camera position="0 1.6 0"
                   look-controls="enabled: false"
                   wasd-controls="enabled: false"></a-camera>
@@ -192,15 +198,15 @@
   </template>
 
   <script>
-    // Tim starts on the lower circular landing. Dimensions are in metres.
-    const walkFloorHeight = 3;
-    const walkRadius = 3.25;
-    const speed = 1.3;
+    // Coordinates are in the exported GLB's space, in metres.
+    const SPAWN = { x: 3.4, y: 10.3, z: -0.3 };
+    const WALK_SPEED = 1.3;
 
     const tvMode = new URLSearchParams(location.search).has('tv');
     const status = document.querySelector('#status');
     const template = document.querySelector(tvMode ? '#tv-scene' : '#phone-scene');
     const scene = template.content.cloneNode(true);
+    const sceneElement = scene.querySelector('a-scene');
     const floor = scene.querySelector('#floor');
 
     const relayUrl = new URL('wss://ardemorelay.onrender.com');
@@ -221,15 +227,32 @@
       });
     }
 
+    function setSpawnPosition(entity) {
+      entity.setAttribute('position', `${SPAWN.x} ${SPAWN.y} ${SPAWN.z}`);
+    }
+
     if (tvMode) {
       const rig = scene.querySelector('#camera-rig');
       let floorFailed = false;
+      let latestPose = null;
+
+      setSpawnPosition(rig);
 
       function showStatus() {
-        status.hidden = false;
+        status.hidden = !floorFailed && relayConnected() && Boolean(latestPose);
         status.textContent = floorFailed ? 'Could not load interior.glb.'
           : relayConnected() ? 'Waiting for the phone…' : 'Connecting to the TV relay…';
       }
+
+      function applyPose() {
+        if (!latestPose || !rig.object3D) return;
+
+        const { x, y, z, yaw } = latestPose;
+        rig.object3D.position.set(x, y, z);
+        rig.object3D.rotation.y = yaw + Math.PI;
+      }
+
+      sceneElement.addEventListener('loaded', applyPose);
 
       floor.addEventListener('model-error', () => {
         floorFailed = true;
@@ -244,21 +267,22 @@
           return;
         }
 
-        const { x, z, yaw } = pose ?? {};
-        if (![x, z, yaw].every(Number.isFinite) || !rig.object3D) return;
+        const { x, y, z, yaw } = pose ?? {};
+        if (![x, z, yaw].every(Number.isFinite)) return;
 
-        rig.object3D.position.set(x, walkFloorHeight, z);
-        rig.object3D.rotation.y = yaw + Math.PI;
-        if (!floorFailed) status.hidden = true;
+        latestPose = { x, y: Number.isFinite(y) ? y : SPAWN.y, z, yaw };
+        applyPose();
+        showStatus();
       }, showStatus);
 
       showStatus();
     } else {
       const marker = scene.querySelector('#marker');
-      const arScene = marker.closest('a-scene');
       const board = scene.querySelector('#board');
       const player = scene.querySelector('#player');
       const character = scene.querySelector('#character');
+      const walkable = scene.querySelector('#walkable');
+
       const controls = document.querySelector('#controls');
       const reset = document.querySelector('#reset');
       const stick = document.querySelector('#stick');
@@ -270,6 +294,12 @@
       const note = document.querySelector('#setup-note');
       const landscape = matchMedia('(orientation: landscape)');
 
+      const { Raycaster, Vector3, DoubleSide } = AFRAME.THREE;
+      const groundRay = new Raycaster();
+      const rayStart = new Vector3();
+      const rayEnd = new Vector3();
+      const rayDirection = new Vector3();
+
       let arSystem;
       let started = false;
       let needsRestart = false;
@@ -277,6 +307,9 @@
       let tracking = false;
       let floorReady = false;
       let characterReady = false;
+      let walkableMesh = null;
+      let spawnChecked = false;
+      let spawnValid = false;
       let error = '';
       let pointerId = null;
       let movement = null;
@@ -285,14 +318,17 @@
       let lastPose = '';
       let lastFrame;
 
+      setSpawnPosition(player);
       mount.value = sessionStorage.getItem('ar-marker-mount') === 'upright'
         ? 'upright' : 'table';
+
       fullscreen.hidden = navigator.standalone === true ||
         matchMedia('(display-mode: standalone)').matches;
 
       function updateControls() {
+        const assetsReady = floorReady && characterReady && Boolean(walkableMesh);
         const ready = landscape.matches && started && !needsRestart &&
-          tracking && floorReady && characterReady && !error;
+          tracking && assetsReady && spawnValid && !error;
 
         setup.hidden = started && !needsRestart && !fullscreenHelp;
         mount.disabled = started && !needsRestart;
@@ -301,19 +337,24 @@
         start.textContent = needsRestart ? 'Reload AR' : 'Start AR';
 
         note.textContent = fullscreenHelp
-          ? 'In Safari, use Share → Add to Home Screen → Open as Web App. Then launch from your Home Screen.'
-          : needsRestart ? 'Reload after turning sideways, then tap Start AR.'
-          : 'Match the setting to how your marker is mounted.';
+          ? 'In Safari, use Share → Add to Home Screen → Open as Web App.'
+          : needsRestart ? 'Turn sideways, reload, then tap Start AR.'
+          : 'Choose how your marker is mounted.';
 
         controls.hidden = !landscape.matches || !started || needsRestart;
         reset.disabled = !ready;
         stick.setAttribute('aria-disabled', String(!ready));
 
-        const message = error || (!landscape.matches ? 'Turn your phone sideways to play.'
-          : needsRestart ? 'Reload to align the AR camera.'
-          : !started ? 'Choose your marker position and start AR.'
-          : !tracking ? 'Point your camera at the marker.'
-          : !ready ? 'Loading the models…' : 'Drag the stick to move Tim.');
+        let message = error;
+        if (!message) {
+          if (!landscape.matches) message = 'Turn your phone sideways to play.';
+          else if (needsRestart) message = 'Reload to align the AR camera.';
+          else if (!started) message = 'Choose your marker position and start AR.';
+          else if (!tracking) message = 'Point your camera at the marker.';
+          else if (!assetsReady || !spawnChecked) message = 'Loading the top level…';
+          else if (!spawnValid) message = 'Tim’s spawn is outside the walkable surface. Check SPAWN in index.html.';
+          else message = 'Drag the stick to move Tim.';
+        }
 
         status.textContent = message +
           (relayConnected() ? '' : ' Connecting to the TV relay…');
@@ -326,8 +367,45 @@
         if (walk) walk.paused = true;
       }
 
-      arScene.addEventListener('loaded', () => {
-        arSystem = arScene.systems['mindar-image-system'];
+      function findGround(x, z, currentY) {
+        const level = player.object3D?.parent;
+        if (!walkableMesh || !level) return null;
+
+        level.updateWorldMatrix(true, false);
+        walkableMesh.updateWorldMatrix(true, true);
+
+        rayStart.set(x, currentY + 0.25, z);
+        rayEnd.set(x, currentY - 0.30, z);
+        level.localToWorld(rayStart);
+        level.localToWorld(rayEnd);
+
+        rayDirection.subVectors(rayEnd, rayStart);
+        groundRay.far = rayDirection.length();
+        if (groundRay.far === 0) return null;
+
+        groundRay.set(rayStart, rayDirection.normalize());
+        const [hit] = groundRay.intersectObject(walkableMesh, true);
+        return hit ? level.worldToLocal(hit.point).y : null;
+      }
+
+      function placeAtSpawn() {
+        const y = findGround(SPAWN.x, SPAWN.z, SPAWN.y);
+        spawnValid = y !== null;
+        spawnChecked = true;
+
+        if (spawnValid) {
+          player.object3D.position.set(SPAWN.x, y, SPAWN.z);
+          player.object3D.rotation.y = Math.PI;
+        }
+      }
+
+      function checkSpawnWhenReady() {
+        if (tracking && walkableMesh && !spawnChecked) placeAtSpawn();
+        updateControls();
+      }
+
+      sceneElement.addEventListener('loaded', () => {
+        arSystem = sceneElement.systems['mindar-image-system'];
         updateControls();
       });
 
@@ -342,7 +420,7 @@
 
         const upright = mount.value === 'upright';
         board.setAttribute('rotation', upright ? '0 0 0' : '90 0 0');
-        board.setAttribute('position', upright ? '0 0 0.5' : '0 0 0');
+        board.setAttribute('position', upright ? '0 0 0.25' : '0 0 0');
         started = true;
         fullscreenHelp = false;
         updateControls();
@@ -367,7 +445,7 @@
       });
 
       document.addEventListener('fullscreenchange', () => {
-        fullscreen.hidden = !!document.fullscreenElement;
+        fullscreen.hidden = Boolean(document.fullscreenElement);
       });
 
       function moveStick(event) {
@@ -378,9 +456,10 @@
         const dx = event.clientX - (bounds.left + bounds.width / 2);
         const dy = event.clientY - (bounds.top + bounds.height / 2);
         const distance = Math.hypot(dx, dy);
-        const limit = distance > radius ? radius / distance : 1;
+        const knobScale = distance > radius ? radius / distance : 1;
+
         knob.style.transform =
-          `translate(-50%, -50%) translate(${dx * limit}px, ${dy * limit}px)`;
+          `translate(-50%, -50%) translate(${dx * knobScale}px, ${dy * knobScale}px)`;
 
         const strength = Math.min(distance / radius, 1);
         const deadZone = 0.12;
@@ -390,10 +469,10 @@
           return;
         }
 
-        const speedFactor = (strength - deadZone) / (1 - deadZone);
+        const throttle = (strength - deadZone) / (1 - deadZone);
         movement = {
-          x: dx / distance * speedFactor,
-          z: dy / distance * speedFactor
+          x: dx / distance * throttle,
+          z: dy / distance * throttle
         };
         player.object3D.rotation.y = Math.atan2(movement.x, movement.z);
       }
@@ -419,18 +498,20 @@
 
       reset.addEventListener('click', () => {
         stopMoving();
-        player.object3D.position.set(0, walkFloorHeight, 0);
-        player.object3D.rotation.y = Math.PI;
+        placeAtSpawn();
+
         if (walk) {
           walk.reset().play();
           mixer.update(0);
           walk.paused = true;
         }
+
+        updateControls();
       });
 
       marker.addEventListener('targetFound', () => {
         tracking = true;
-        updateControls();
+        checkSpawnWhenReady();
       });
 
       marker.addEventListener('targetLost', () => {
@@ -458,25 +539,46 @@
       character.addEventListener('model-loaded', event => {
         const model = event.detail.model;
         const clip = model.animations?.[0];
+
         if (clip) {
           mixer = new AFRAME.THREE.AnimationMixer(model);
           walk = mixer.clipAction(clip).play();
           mixer.update(0);
           walk.paused = true;
         }
+
         characterReady = true;
         updateControls();
       });
 
-      for (const [entity, filename] of [[floor, 'interior.glb'], [character, 'character.glb']]) {
+      walkable.addEventListener('model-loaded', event => {
+        walkableMesh = event.detail.model;
+        walkableMesh.traverse(object => {
+          if (!object.isMesh) return;
+          const materials = Array.isArray(object.material)
+            ? object.material : [object.material];
+
+          for (const material of materials) {
+            material.side = DoubleSide;
+          }
+        });
+
+        checkSpawnWhenReady();
+      });
+
+      for (const [entity, file] of [
+        [floor, 'interior.glb'],
+        [character, 'character.glb'],
+        [walkable, 'top-walkable.glb']
+      ]) {
         entity.addEventListener('model-error', () => {
-          error = `Could not load ${filename}.`;
+          error = `Could not load ${file}.`;
           stopMoving();
           updateControls();
         });
       }
 
-      arScene.addEventListener('arError', () => {
+      sceneElement.addEventListener('arError', () => {
         error = 'Could not start AR. Check camera access and targets.mind.';
         needsRestart = true;
         stopMoving();
@@ -487,23 +589,29 @@
         const dt = Math.min((now - (lastFrame ?? now)) / 1000, 0.05);
         lastFrame = now;
 
-        if (movement) {
+        if (movement && tracking && spawnValid) {
           const position = player.object3D.position;
-          let x = position.x + movement.x * speed * dt;
-          let z = position.z + movement.z * speed * dt;
+          const nextX = position.x + movement.x * WALK_SPEED * dt;
+          const nextZ = position.z + movement.z * WALK_SPEED * dt;
+          const candidates = [
+            [nextX, nextZ],
+            [nextX, position.z],
+            [position.x, nextZ]
+          ];
 
-          // Keep Tim on the circular landing until full level collision is added.
-          const distanceFromCentre = Math.hypot(x, z);
-          if (distanceFromCentre > walkRadius) {
-            const boundaryScale = walkRadius / distanceFromCentre;
-            x *= boundaryScale;
-            z *= boundaryScale;
+          let moved = false;
+          for (const [x, z] of candidates) {
+            if (Math.hypot(x - position.x, z - position.z) < 0.0001) continue;
+
+            const ground = findGround(x, z, position.y);
+            if (ground === null) continue;
+
+            position.set(x, ground, z);
+            moved = true;
+            break;
           }
 
-          if (walk) {
-            walk.paused = Math.hypot(x - position.x, z - position.z) < 0.0001;
-          }
-          position.set(x, walkFloorHeight, z);
+          if (walk) walk.paused = !moved;
           mixer?.update(dt);
         }
 
@@ -516,11 +624,11 @@
       });
 
       setInterval(() => {
-        if (!relayConnected() || !player.object3D) return;
-
-        const { x, z } = player.object3D.position;
+        if (!relayConnected() || !spawnValid || !player.object3D) return;
+        const { x, y, z } = player.object3D.position;
         const yaw = player.object3D.rotation.y;
-        const pose = JSON.stringify({ x, z, yaw });
+        const pose = JSON.stringify({ x, y, z, yaw });
+
         if (pose === lastPose) return;
         socket.send(pose);
         lastPose = pose;
