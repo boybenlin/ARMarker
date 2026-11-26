@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>AR Walk Demo</title>
+
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
   <style>
     body { margin: 0; font: 15px system-ui, sans-serif; }
     [hidden] { display: none !important; }
@@ -64,8 +66,8 @@
       color: white;
       text-shadow: 0 1px 4px rgba(0, 0, 0, .65);
       font: 27px/1 system-ui, sans-serif;
-      appearance: none;
       -webkit-appearance: none;
+      appearance: none;
     }
 
     #stick {
@@ -143,16 +145,19 @@
   </div>
 
   <template id="phone-scene">
-    <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: false"
-             xr-mode-ui="enabled: false"
-             device-orientation-permission-ui="enabled: false">
+    <a-scene
+      mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; filterMinCF: 0.0005; filterBeta: 100"
+      xr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false">
       <a-assets>
         <a-asset-item id="floor-asset" src="./interior.glb"></a-asset-item>
         <a-asset-item id="character-asset" src="./character.glb?v=tim-20261126"></a-asset-item>
         <a-asset-item id="walkable-asset" src="./top-walkable.glb"></a-asset-item>
       </a-assets>
+
       <a-camera position="0 0 0" look-controls="enabled: false"
                 wasd-controls="enabled: false"></a-camera>
+
       <a-entity id="marker" mindar-image-target="targetIndex: 0">
         <a-entity id="board" rotation="90 0 0" scale="0.026 0.026 0.026">
           <a-entity position="-2.01 0 -1.53">
@@ -236,6 +241,7 @@
       }
 
       sceneElement.addEventListener('loaded', applyPose);
+
       floor.addEventListener('model-error', () => {
         floorFailed = true;
         showStatus();
@@ -478,11 +484,13 @@
       reset.addEventListener('click', () => {
         stopMoving();
         placeAtSpawn();
+
         if (walk) {
           walk.reset().play();
           mixer.update(0);
           walk.paused = true;
         }
+
         updateControls();
       });
 
@@ -533,11 +541,12 @@
         walkableMesh = event.detail.model;
         walkableMesh.traverse(object => {
           if (!object.isMesh) return;
+
           const materials = Array.isArray(object.material)
             ? object.material : [object.material];
-
           for (const material of materials) material.side = DoubleSide;
         });
+
         checkSpawnWhenReady();
       });
 
