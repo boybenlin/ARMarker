@@ -295,8 +295,8 @@
     const INTERACTION_DISTANCE = 1.4;
 
     // Set these after locating the fridge and safe in the exported level.
-    // FRIDGE is the standing spot and facing angle, in degrees. SAFE needs only x, y and z.
-    const FRIDGE = { x: -2.9, y: 8.78, z: 4.0, yaw: 90 };
+    // The fridge standing spot and front-face target are in exported level coordinates.
+    const FRIDGE = { x: -2.9, y: 8.78, z: 4.0, faceX: -1.68, faceZ: 4.13 };
     const SAFE = { x: -4.4, y: 10.321, z: -2.65 };
 
     const tv = new URLSearchParams(location.search).has('tv');
@@ -325,6 +325,7 @@
     let startsAt = 0;
     let introTimer;
     let audioEnabled = false;
+    let spectatorReady = false;
     let muted = false;
     let preparing = false;
     let mediaMessage = '';
@@ -346,6 +347,12 @@
 
     function online() {
       return socket?.readyState === WebSocket.OPEN;
+    }
+
+    function announceTVReadiness() {
+      if (tv && online()) {
+        socket.send(JSON.stringify({ type: 'tv-ready', ready: audioEnabled && !video.error }));
+      }
     }
 
     function refresh() {
@@ -446,7 +453,7 @@
     }
 
     play.addEventListener('click', async () => {
-      if (phase !== 'idle' || preparing) return;
+      if (phase !== 'idle' || preparing || !spectatorReady || !online()) return;
 
       preparing = true;
       refresh();
@@ -456,7 +463,11 @@
         video.pause();
 
         if (phase === 'idle') {
-          scheduleIntro(String(Date.now()), Date.now() + 1800);
+          if (!spectatorReady || !online()) {
+            mediaMessage = 'The spectator screen disconnected. Enable audio there and try again.';
+            return;
+          }
+          scheduleIntro(String(Date.now()), Date.now() + 2500);
         }
       } catch {
         mediaMessage = 'Could not play intro.mp4. Try again or skip.';
@@ -497,13 +508,9 @@
       enableAudio.disabled = false;
 
       if (phase !== 'idle') return;
-      if (results[1].status === 'rejected') {
-        reportMusicError(results[1].reason);
-        return;
-      }
-
       audioEnabled = results[0].status === 'fulfilled';
-      mediaMessage = audioEnabled ? '' : 'Music is ready. Could not prepare intro.mp4.';
+      mediaMessage = audioEnabled ? '' : 'Could not prepare intro.mp4. Check the video in Chrome.';
+      announceTVReadiness();
       refresh();
     });
 
@@ -578,14 +585,26 @@
       url.searchParams.set('role', tv ? 'tv' : 'phone');
 
       socket = new WebSocket(url);
-      if (tv) socket.addEventListener('message', receiveTVMessage);
+      if (tv) {
+        socket.addEventListener('message', receiveTVMessage);
+      } else {
+        socket.addEventListener('message', event => {
+          let notice;
+          try { notice = JSON.parse(event.data); } catch { return; }
+          if (notice?.type !== 'tv-ready') return;
+          spectatorReady = notice.ready === true;
+          refresh();
+        });
+      }
 
       socket.addEventListener('open', () => {
         lastMessage = '';
+        announceTVReadiness();
         refresh();
       });
 
       socket.addEventListener('close', () => {
+        spectatorReady = false;
         refresh();
         setTimeout(connectRelay, 2000);
       });
@@ -695,7 +714,7 @@
         const exploring = canInteract && puzzleState === 'explore';
 
         play.hidden = phase !== 'idle';
-        play.disabled = preparing;
+        play.disabled = preparing || !spectatorReady || !online();
         byId('skip-setup').hidden = phase !== 'idle';
         byId('mount-label').hidden = phase !== 'game' || (arStarted && !needsRestart);
         startAR.hidden = byId('mount-label').hidden;
@@ -715,7 +734,7 @@
 
         let message = error || mediaMessage;
         if (!message) {
-          if (phase === 'idle') message = 'Press Play. Open the TV view for the shared intro.';
+          if (phase === 'idle') message = spectatorReady ? 'Ready. Press Play.' : 'Open the spectator view and click Enable TV audio.';
           else if (phase === 'intro') message = '';
           else if (!landscape.matches) message = 'Turn your phone sideways.';
           else if (needsRestart) message = 'Reload AR to align the camera.';
@@ -757,15 +776,18 @@
           return;
         }
 
-        if (!near(FRIDGE, 0.65)) {
+        if (!near(FRIDGE, 1.05)) {
           fridgeEnteredAt = null;
           memoShownOnThisVisit = false;
           return;
         }
 
         const heading = player.object3D.rotation.y;
-        const fridgeHeading = FRIDGE.yaw * Math.PI / 180;
-        const facingFridge = Math.cos(heading - fridgeHeading) >= Math.cos(Math.PI / 6);
+        const position = player.object3D.position;
+        const dx = FRIDGE.faceX - position.x;
+        const dz = FRIDGE.faceZ - position.z;
+        const fridgeHeading = Math.atan2(dx, dz);
+        const facingFridge = Math.cos(heading - fridgeHeading) >= Math.cos(Math.PI / 4);
         if (!facingFridge || movement || memoShownOnThisVisit) {
           fridgeEnteredAt = null;
           return;
@@ -1084,7 +1106,7 @@
           introState: phase,
           introId,
           introStartsAt: startsAt,
-          introDelayMs: phase === 'intro' ? 1750 : undefined,
+          introDelayMs: phase === 'intro' ? 2450 : undefined,
           puzzle: puzzleState,
           tvMuted: muted
         });
@@ -1104,6 +1126,7 @@
   </script>
 </body>
 </html>
+
 
 
 
