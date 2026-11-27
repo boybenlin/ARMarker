@@ -70,6 +70,18 @@
       letter-spacing: .12em;
     }
 
+    #digits {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(42px, 1fr));
+      max-width: 230px;
+      margin: 6px auto;
+    }
+
+    #digits button {
+      padding: 5px 10px;
+      min-height: 34px;
+    }
+
     #fullscreen {
       bottom: max(12px, env(safe-area-inset-bottom));
       left: calc(env(safe-area-inset-left, 0px) + 12px);
@@ -173,7 +185,7 @@
   </div>
 
   <div id="cutscene" hidden>
-    <video id="intro" src="./intro.mp4" playsinline preload="auto"></video>
+    <video id="intro" src="./intro.mp4?v=regular-1080" playsinline preload="auto"></video>
     <div id="video-actions">
       <button id="start-video" type="button" hidden>Start video with audio</button>
       <button id="skip-video" type="button" hidden>Skip intro</button>
@@ -188,14 +200,27 @@
   </div>
 
   <div id="puzzle" class="glass" hidden>
-    <button id="inspect" type="button" hidden>Inspect fridge</button>
     <button id="enter-code" type="button" hidden>Enter code</button>
     <button id="close-memo" type="button" hidden>Close memo</button>
 
     <form id="keypad" hidden>
       <label for="code">Safe code</label>
-      <input id="code" type="text" inputmode="numeric"
-             maxlength="4" pattern="[0-9]{4}" autocomplete="off" required>
+      <input id="code" type="text" inputmode="none" readonly
+             maxlength="4" autocomplete="off" aria-describedby="code-feedback">
+      <div id="digits" role="group" aria-label="Number pad">
+        <button type="button" data-digit="1">1</button>
+        <button type="button" data-digit="2">2</button>
+        <button type="button" data-digit="3">3</button>
+        <button type="button" data-digit="4">4</button>
+        <button type="button" data-digit="5">5</button>
+        <button type="button" data-digit="6">6</button>
+        <button type="button" data-digit="7">7</button>
+        <button type="button" data-digit="8">8</button>
+        <button type="button" data-digit="9">9</button>
+        <button type="button" id="clear-code">Clear</button>
+        <button type="button" data-digit="0">0</button>
+        <button type="button" id="delete-digit" aria-label="Delete last digit">⌫</button>
+      </div>
       <button type="submit">Submit</button>
       <button id="cancel-code" type="button">Close</button>
       <p id="code-feedback" role="status"></p>
@@ -270,9 +295,9 @@
     const INTERACTION_DISTANCE = 1.4;
 
     // Set these after locating the fridge and safe in the exported level.
-    // Example format: { x: 5, y: 10.3, z: 1.25 }
-    const FRIDGE = null;
-    const SAFE = null;
+    // FRIDGE is the standing spot and facing angle, in degrees. SAFE needs only x, y and z.
+    const FRIDGE = { x: -2.9, y: 8.78, z: 4.0, yaw: 90 };
+    const SAFE = { x: -4.4, y: 10.321, z: -2.65 };
 
     const tv = new URLSearchParams(location.search).has('tv');
     const byId = id => document.getElementById(id);
@@ -346,14 +371,25 @@
       }
     }
 
-    function startMusic() {
-      if (!tv || phase !== 'game') return;
-      music.play().catch(() => {
+    function reportMusicError(error) {
+      audioEnabled = false;
+      mediaMessage = error?.name === 'NotAllowedError'
+        ? 'Click Enable TV audio on this screen to start the music.'
+        : 'Could not play game-music.mp3. Check that the published file opens in Chrome.';
+      refresh();
+    }
+
+    async function startMusic() {
+      if (!tv || phase !== 'game' || !music.paused) return;
+      try {
+        await music.play();
         if (phase !== 'game') return;
-        audioEnabled = false;
-        mediaMessage = 'Tap Enable TV audio to start the music.';
+        audioEnabled = true;
+        mediaMessage = '';
         refresh();
-      });
+      } catch (error) {
+        if (phase === 'game') reportMusicError(error);
+      }
     }
 
     function enterGame() {
@@ -430,22 +466,49 @@
       }
     });
 
-    enableAudio.addEventListener('click', async () => {
-      const media = phase === 'game' ? music : video;
+    async function prepareTVMedia(media, keepPlaying) {
+      const volume = media.volume;
+      if (!keepPlaying) media.volume = 0;
 
       try {
         await media.play();
-        audioEnabled = true;
-        mediaMessage = '';
-        if (phase === 'idle') {
+        if (!keepPlaying && phase === 'idle') {
           media.pause();
           media.currentTime = 0;
         }
-      } catch {
-        mediaMessage = 'Could not enable audio. Check the uploaded media files.';
+      } finally {
+        media.volume = volume;
+      }
+    }
+
+    enableAudio.addEventListener('click', async () => {
+      if (phase === 'game') {
+        await startMusic();
+        return;
+      }
+      if (phase !== 'idle') return;
+
+      enableAudio.disabled = true;
+      // Start both elements from the same user gesture on the TV browser.
+      const results = await Promise.allSettled([
+        prepareTVMedia(video, false),
+        prepareTVMedia(music, false)
+      ]);
+      enableAudio.disabled = false;
+
+      if (phase !== 'idle') return;
+      if (results[1].status === 'rejected') {
+        reportMusicError(results[1].reason);
+        return;
       }
 
+      audioEnabled = results[0].status === 'fulfilled';
+      mediaMessage = audioEnabled ? '' : 'Music is ready. Could not prepare intro.mp4.';
       refresh();
+    });
+
+    music.addEventListener('error', () => {
+      if (tv && phase === 'game') reportMusicError(music.error);
     });
 
     startVideo.addEventListener('click', () => startIntroPlayback(introId));
@@ -464,9 +527,9 @@
     });
 
     video.addEventListener('error', () => {
-      mediaMessage = 'Could not load intro.mp4.';
       if (phase === 'intro') enterGame();
-      else refresh();
+      mediaMessage = 'Could not load intro.mp4. Open the published file in this browser to check it.';
+      refresh();
     });
 
     function applyTVPose() {
@@ -486,12 +549,13 @@
         return;
       }
 
-      const { x, y, z, yaw, introState, introId: id, introStartsAt, puzzle, tvMuted } = data ?? {};
+      const { x, y, z, yaw, introState, introId: id, introStartsAt, introDelayMs, puzzle, tvMuted } = data ?? {};
       if (![x, z, yaw].every(Number.isFinite)) return;
 
       if (typeof tvMuted === 'boolean' && muted !== tvMuted) {
         muted = tvMuted;
         applyAudioState();
+        if (!muted && phase === 'game') startMusic();
       }
 
       latestPose = { x, y: Number.isFinite(y) ? y : SPAWN.y, z, yaw };
@@ -501,7 +565,9 @@
       if (introState === 'intro' && typeof id === 'string' && id &&
           id !== lastTVIntro && Number.isFinite(introStartsAt)) {
         lastTVIntro = id;
-        scheduleIntro(id, introStartsAt);
+        const localStart = Number.isFinite(introDelayMs)
+          ? Date.now() + introDelayMs : introStartsAt;
+        scheduleIntro(id, localStart);
       } else if (introState === 'game' && phase !== 'game') {
         enterGame();
       }
@@ -578,7 +644,6 @@
       const stick = byId('stick');
       const knob = byId('knob');
       const puzzle = byId('puzzle');
-      const inspect = byId('inspect');
       const enterCode = byId('enter-code');
       const closeMemo = byId('close-memo');
       const keypad = byId('keypad');
@@ -606,6 +671,8 @@
       let movement = null;
       let pointerId = null;
       let memoRead = false;
+      let fridgeEnteredAt = null;
+      let memoShownOnThisVisit = false;
       let unlocked = false;
       let walk;
       let mixer;
@@ -615,10 +682,10 @@
       fullscreen.hidden = navigator.standalone === true ||
         matchMedia('(display-mode: standalone)').matches;
 
-      function near(point) {
-        if (!point) return true;
+      function near(point, distance = INTERACTION_DISTANCE) {
+        if (!point) return false;
         const { x, y, z } = player.object3D.position;
-        return Math.hypot(x - point.x, y - point.y, z - point.z) <= INTERACTION_DISTANCE;
+        return Math.hypot(x - point.x, y - point.y, z - point.z) <= distance;
       }
 
       renderPhone = () => {
@@ -637,14 +704,13 @@
 
         menu.hidden = phase === 'intro' || (phase === 'game' && startAR.hidden);
         controls.hidden = !exploring;
-        inspect.hidden = !exploring || !near(FRIDGE);
         enterCode.hidden = !exploring || !memoRead || !near(SAFE);
         enterCode.textContent = unlocked ? 'View stone' : 'Enter code';
 
         closeMemo.hidden = puzzleState !== 'memo';
         keypad.hidden = puzzleState !== 'keypad';
         continueButton.hidden = puzzleState !== 'stone';
-        puzzle.hidden = inspect.hidden && enterCode.hidden && closeMemo.hidden &&
+        puzzle.hidden = enterCode.hidden && closeMemo.hidden &&
           keypad.hidden && continueButton.hidden;
 
         let message = error || mediaMessage;
@@ -661,7 +727,7 @@
           else if (puzzleState === 'stone') message = 'Look at the stone on the TV.';
           else if (puzzleState === 'keypad') message = 'Enter the code from the memo.';
           else if (unlocked) message = 'Stone found.';
-          else message = memoRead ? 'Find the safe.' : 'Find the memo at the fridge.';
+          else message = memoRead ? 'Go to the safe to unlock it and get the stone.' : '';
         }
 
         status.textContent = message;
@@ -685,10 +751,33 @@
         refresh();
       }
 
-      inspect.addEventListener('click', () => {
+      function checkFridge(now) {
+        if (controls.hidden) {
+          fridgeEnteredAt = null;
+          return;
+        }
+
+        if (!near(FRIDGE, 0.65)) {
+          fridgeEnteredAt = null;
+          memoShownOnThisVisit = false;
+          return;
+        }
+
+        const heading = player.object3D.rotation.y;
+        const fridgeHeading = FRIDGE.yaw * Math.PI / 180;
+        const facingFridge = Math.cos(heading - fridgeHeading) >= Math.cos(Math.PI / 6);
+        if (!facingFridge || movement || memoShownOnThisVisit) {
+          fridgeEnteredAt = null;
+          return;
+        }
+
+        fridgeEnteredAt ??= now;
+        if (now - fridgeEnteredAt < 250) return;
+
+        memoShownOnThisVisit = true;
         memoRead = true;
         openPuzzle('memo');
-      });
+      }
 
       closeMemo.addEventListener('click', () => openPuzzle('explore'));
 
@@ -699,16 +788,37 @@
           code.value = '';
           feedback.textContent = '';
           openPuzzle('keypad');
-          code.focus();
         }
+      });
+
+      for (const button of byId('digits').querySelectorAll('[data-digit]')) {
+        button.addEventListener('click', () => {
+          if (code.value.length < 4) code.value += button.dataset.digit;
+          feedback.textContent = '';
+        });
+      }
+
+      byId('clear-code').addEventListener('click', () => {
+        code.value = '';
+        feedback.textContent = '';
+      });
+
+      byId('delete-digit').addEventListener('click', () => {
+        code.value = code.value.slice(0, -1);
+        feedback.textContent = '';
       });
 
       keypad.addEventListener('submit', event => {
         event.preventDefault();
 
-        if (code.value.trim() !== SAFE_CODE) {
+        if (code.value.length !== 4) {
+          feedback.textContent = 'Enter all four digits.';
+          return;
+        }
+
+        if (code.value !== SAFE_CODE) {
           feedback.textContent = 'Incorrect code. Try again.';
-          code.select();
+          code.value = '';
           return;
         }
 
@@ -957,6 +1067,7 @@
           if (moved) refresh();
         }
 
+        checkFridge(now);
         requestAnimationFrame(frame);
       }
 
@@ -973,6 +1084,7 @@
           introState: phase,
           introId,
           introStartsAt: startsAt,
+          introDelayMs: phase === 'intro' ? 1750 : undefined,
           puzzle: puzzleState,
           tvMuted: muted
         });
@@ -992,3 +1104,6 @@
   </script>
 </body>
 </html>
+
+
+
