@@ -267,7 +267,7 @@
              device-orientation-permission-ui="enabled: false">
       <a-assets>
         <a-asset-item id="floor-asset" src="./interior.glb"></a-asset-item>
-        <a-asset-item id="memo-asset" src="./memo.glb"></a-asset-item>
+        <a-asset-item id="memo-asset" src="./memo.glb?v=1127"></a-asset-item>
         <a-asset-item id="stone-asset" src="./stone.glb"></a-asset-item>
       </a-assets>
 
@@ -302,8 +302,8 @@
     const tv = new URLSearchParams(location.search).has('tv');
     const byId = id => document.getElementById(id);
     const scene = byId(tv ? 'tv-scene' : 'phone-scene').content.cloneNode(true);
-    const find = id => scene.querySelector('#' + id);
     const sceneElement = scene.querySelector('a-scene');
+    const find = id => sceneElement.querySelector('#' + id);
     const floor = find('floor');
     const rig = find('rig');
     const player = find('player');
@@ -544,8 +544,10 @@
       const { x, y, z, yaw } = latestPose;
       rig.object3D.position.set(x, y, z);
       rig.object3D.rotation.y = yaw + Math.PI;
-      find('memo-holder').object3D.visible = puzzleState === 'memo';
-      find('stone-holder').object3D.visible = puzzleState === 'stone';
+      const memoHolder = find('memo-holder')?.object3D;
+      const stoneHolder = find('stone-holder')?.object3D;
+      if (memoHolder) memoHolder.visible = puzzleState === 'memo';
+      if (stoneHolder) stoneHolder.visible = puzzleState === 'stone';
     }
 
     function receiveTVMessage(event) {
@@ -567,8 +569,6 @@
 
       latestPose = { x, y: Number.isFinite(y) ? y : SPAWN.y, z, yaw };
       puzzleState = puzzle === 'memo' || puzzle === 'stone' ? puzzle : 'explore';
-      applyTVPose();
-
       if (introState === 'intro' && typeof id === 'string' && id &&
           id !== lastTVIntro && Number.isFinite(introStartsAt)) {
         lastTVIntro = id;
@@ -578,6 +578,7 @@
       } else if (introState === 'game' && phase !== 'game') {
         enterGame();
       }
+      applyTVPose();
     }
 
     function connectRelay() {
@@ -642,7 +643,7 @@
         [find('stone'), 'stone.glb']
       ]) {
         entity.addEventListener('model-error', () => {
-          tvModelError = 'Could not load ' + filename + '.';
+          tvModelError = 'Could not load ' + filename + '. Check that the file is beside index.html on GitHub Pages.';
           refresh();
         });
       }
@@ -1126,6 +1127,7 @@
   </script>
 </body>
 </html>
+
 
 
 
